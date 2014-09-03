@@ -1,0 +1,56 @@
+CREATE DATABASE mailing;
+USE mailing;
+CREATE TABLE Customers (EmailAddress varchar(320) NOT NULL, Gender ENUM ('Male', 'Female', 'Other') NOT NULL, Salutation ENUM ('Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Professor'), FirstName varchar(255), LastName varchar(255), EmailBounce bool NOT NULL DEFAULT FALSE, PRIMARY KEY(EmailAddress));
+CREATE TABLE Newsletters (NewsletterID INT UNSIGNED NOT NULL AUTO_INCREMENT, FriendlyName varchar(30), OfficialName varchar(30), PRIMARY KEY (NewsletterID));
+CREATE TABLE Issues (IssueID INT UNSIGNED NOT NULL AUTO_INCREMENT, NewsletterID INT UNSIGNED NOT NULL, SendDate DATE, PRIMARY KEY (IssueID), FOREIGN KEY (NewsletterID) REFERENCES Newsletters(NewsletterID));
+CREATE TABLE Subscriptions (ID INT UNSIGNED NOT NULL AUTO_INCREMENT, EmailAddress varchar(320) NOT NULL, NewsletterID INT UNSIGNED NOT NULL, PRIMARY KEY (ID), FOREIGN KEY (EmailAddress) REFERENCES Customers(EmailAddress), FOREIGN KEY (NewsletterID) REFERENCES Newsletters(NewsletterID));
+CREATE TABLE TrackingIDs(ID varchar(36) NOT NULL, Activated BOOL NOT NULL DEFAULT FALSE, ClickOrOpenType ENUM('click', 'open') NOT NULL, EmailAddress varchar(320) NOT NULL, NewsletterID INT UNSIGNED NOT NULL, NewsletterIssue INT UNSIGNED NOT NULL, TimeClicked date NOT NULL, LinkedURL varchar(255) NOT NULL, PRIMARY KEY (ID), FOREIGN KEY (EmailAddress) REFERENCES Customers (EmailAddress), FOREIGN KEY (NewsletterID) REFERENCES Newsletters (NewsletterID), FOREIGN KEY (NewsletterIssue) REFERENCES Issues (IssueID));
+
+DELIMITER $$
+CREATE TRIGGER AddDateandIssue BEFORE INSERT ON Issues
+	FOR EACH ROW
+	BEGIN
+		SET NEW.SendDate = CURRENT_DATE;
+		SET @Count = (SELECT COUNT(*) FROM Issues WHERE NewsletterID = NEW.NewsletterID);
+		SET NEW.NewsletterIssue = @Count + 1;
+	END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER DateClick BEFORE UPDATE ON TrackingIDs
+	FOR EACH ROW
+	BEGIN
+		IF (NEW.Activated = 1 AND OLD.Activated = 0) THEN
+			SET NEW.TimeClicked = CURRENT_DATE;
+		END IF;
+	END$$
+DELIMITER ;
+
+CREATE TABLE TextReplacementVariables (VariableName varchar (50) NOT NULL, ColumnName varchar (50) NOT NULL, TableLocation varchar (50) NOT NULL, WhereTerm ENUM("EmailAddress", "NewsletterID") NOT NULL, PRIMARY KEY (VariableName));
+
+INSERT INTO `TextReplacementVariables` VALUES ("FN", "FirstName", "Customers", "EmailAddress");
+INSERT INTO `TextReplacementVariables` VALUES ("LN", "LastName", "Customers", "EmailAddress");
+INSERT INTO `TextReplacementVariables` VALUES ("FirstName", "FirstName", "Customers", "EmailAddress");
+INSERT INTO `TextReplacementVariables` VALUES ("LastNane", "LastName", "Customers", "EmailAddress");
+INSERT INTO `TextReplacementVariables` VALUES ("OfficialName", "OfficialName", "Newsletters", "NewsletterID");
+INSERT INTO `TextReplacementVariables` VALUES ("IssueNumber", "IssueID", "Issues", "NewsletterID");
+
+CREATE USER 'redirector'@'localhost' IDENTIFIED BY PASSWORD '*89DF0C4275DEC459B33DDB13FF3FB2C055471AD1'; //The plaintext for this password is: bdaT5gTgZgWrrhntY8skVK88
+
+GRANT SELECT (ID, Activated, ClickOrOpenType, TimeClicked, LinkedURL), UPDATE(Activated, TimeClicked) ON mailing.TrackingIDs TO 'redirector'@'localhost';
+
+GRANT TRIGGER ON mailing.TrackingIDs TO 'redirector'@'localhost';
+
+CREATE USER 'imapper'@'localhost' IDENTIFIED BY PASSWORD '*06F5A4DD468393ED85D2050607027E7C1E6AD8DA'; //The plaintext for this password is: sFHvmgpfXL5FDds3ZmmsnQdM
+
+GRANT SELECT ON mailing.TextReplacementVariables TO 'imapper'@'localhost';
+GRANT INSERT (ID, ClickOrOpenType, EmailAddress, NewsletterID, NewsletterIssue, TimeClicked, LinkedURL) ON mailing.TrackingIDs TO 'imapper'@'localhost';
+GRANT SELECT ON mailing.Subscriptions TO 'imapper'@'localhost';
+GRANT SELECT ON mailing.Newsletters TO 'imapper'@'localhost';
+GRANT SELECT, INSERT ON mailing.Issues TO 'imapper'@'localhost';
+GRANT SELECT ON mailing.Customers TO 'imapper'@'localhost';
+GRANT TRIGGER ON mailing.TrackingIDs TO 'redirector'@'localhost';
+GRANT TRIGGER ON mailing.Issues TO 'redirector'@'localhost';
+
+CREATE TABLE MiscInfo (RedirectPath varchar(254) NOT NULL, PRIMARY KEY (RedirectPath));
+GRANT SELECT ON mailing.MiscInfo TO 'imapper'@'localhost';
